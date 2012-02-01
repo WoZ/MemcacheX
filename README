@@ -1,0 +1,65 @@
+MemcacheX
+
+DESCRIPTION
+MamcacheX is a PHP class based on Memcache extension. It resolves dog-pile effect and adds tags support for stored data.
+
+It gives ability to lock records. It helps to prevent simultaneous queries to database (dog-pile effect) - while one process updates cache, another one can't do this and it waits for unlocking.
+Each record in cache may have tags that helps to flush group of data associated with that tag.
+
+
+INSTALLATION
+Make sure that Memcache installed. Read http://ua2.php.net/manual/en/memcache.installation.php.
+Include class in your code.
+
+
+USAGE
+
+Typical code you should use to invalidate all cached records with some tag.
+---------------------------------------------------------------------------
+
+$waitTime = 3000;     // Time to wait before return old data if lock setted (in milliseconds)
+$waitInterval = 200;  // Interval between checking for key to unlock (in milliseconds)
+
+$memcachex = new MemcacheX(2000, 200);
+$memcachex->addServer('10.0.0.1', 11211);
+$memcachex->addServer('10.0.0.2', 11211);
+
+$tag = 'data_tag';
+
+if ($memcachex->getTag($tag)) {
+    $memcachex->deleteTag($tag);
+} else {
+    echo 'Tag not found';
+}
+
+
+Typical code you should use to resolve dog-pile effect.
+-------------------------------------------------------
+
+$waitTime = 3000;     // Time to wait before return old data if lock setted (in milliseconds)
+$waitInterval = 200;  // Interval between checking for key to unlock (in milliseconds)
+
+$memcachex = new MemcacheX(2000, 200);
+$memcachex->addServer('10.0.0.1', 11211);
+$memcachex->addServer('10.0.0.2', 11211);
+
+$key = 'my_data';
+$tags = array('data_tag');
+
+$data = $memcachex->get($key);
+if (false === $data) {
+    if ($memcachex->lock($key) || $memcachex->isDown()) {
+        // fetches data and puts it to $newData var
+        // let's put $newData to cache using $key name and $tags
+        $memcachex->set($key, $newData, MEMCACHE_COMPRESSED, 60, $tags);
+        // you should unlock record
+        $memcachex->unlock($key);
+    } else {
+        // another process writing data and $key already locked
+        if (! $memcachex->waitForUnlock($key) || ! $data = $memcachex->get($key)) {
+            // $key unlocked but has no data. You should increase lock timeout
+        }
+    }
+}
+
+echo $data;
